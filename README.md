@@ -3,11 +3,11 @@
 [![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/sandeepmistry/bleno?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 
-A node.js module for implementing BLE (Bluetooth low energy) peripherals.
+A Node.js module for implementing BLE (Bluetooth Low Energy) peripherals.
 
 Need a BLE central module? See [noble](https://github.com/sandeepmistry/noble).
 
-__Note:__ Mac OS X and Linux are currently the only supported OSes.
+__Note:__ Mac OS X, Linux, and Windows are currently the only supported OSes.
 
 ## Prerequisites
 
@@ -16,20 +16,46 @@ __Note:__ Mac OS X and Linux are currently the only supported OSes.
  * install [Xcode](https://itunes.apple.com/ca/app/xcode/id497799835?mt=12)
  * 10.9 or later
 
-### Linux (Ubuntu)
+### Linux
 
  * Kernel version 3.6 or above
  * ```libbluetooth-dev```
+ * ```bluetoothd``` disabled, if BlueZ 5.14 or later is installed. Use ```sudo hciconfig hci0 up``` to power Bluetooth adapter up after stopping or disabling ```bluetoothd```.
+    * ```System V```:
+      * ```sudo service bluetooth stop``` (once)
+      * ```sudo update-rc.d bluetooth remove``` (persist on reboot)
+    * ```systemd```
+      * ```sudo systemctl stop bluetooth``` (once)
+      * ```sudo systemctl disable bluetooth``` (persist on reboot)
 
 #### Ubuntu/Debian/Raspbian
 
 ```sh
-sudo apt-get install bluetooth bluez-utils libbluetooth-dev
+sudo apt-get install bluetooth bluez libbluetooth-dev libudev-dev
+```
+
+Make sure ```node``` is on your path, if it's not, some options:
+ * symlink ```nodejs``` to ```node```: ```sudo ln -s /usr/bin/nodejs /usr/bin/node```
+ * [install Node.js using the NodeSource package](https://nodejs.org/en/download/package-manager/#debian-and-ubuntu-based-linux-distributions)
+
+#### Fedora / Other-RPM based
+
+```sh
+sudo yum install bluez bluez-libs bluez-libs-devel
 ```
 
 #### Intel Edison
 
 See [Configure Intel Edison for Bluetooth LE (Smart) Development](http://rexstjohn.com/configure-intel-edison-for-bluetooth-le-smart-development/)
+
+### Windows
+
+ * [node-gyp requirements for Windows](https://github.com/TooTallNate/node-gyp#installation)
+   * Python 2.7
+   * Visual Studio ([Express](https://www.visualstudio.com/en-us/products/visual-studio-express-vs.aspx))
+ * [node-bluetooth-hci-socket prerequisites](https://github.com/sandeepmistry/node-bluetooth-hci-socket#windows)
+   * Compatible Bluetooth 4.0 USB adapter
+   * [WinUSB](https://msdn.microsoft.com/en-ca/library/windows/hardware/ff540196(v=vs.85).aspx) driver setup for Bluetooth 4.0 USB adapter, using [Zadig tool](http://zadig.akeo.ie/)
 
 ## Install
 
@@ -47,7 +73,11 @@ See [examples folder](https://github.com/sandeepmistry/bleno/blob/master/example
 
 ### Actions
 
-#### Start advertising
+#### Advertising
+
+##### Start advertising
+
+NOTE: ```bleno.state``` must be ```poweredOn``` before advertising is started. ```bleno.on('stateChange', callback(state));``` can be used register for state change events.
 
 ```javascript
 var name = 'name';
@@ -66,7 +96,7 @@ bleno.startAdvertising(name, serviceUuids[, callback(error)]);
     * 7 16-bit service UUID
 
 
-#### Start advertising iBeacon
+##### Start advertising iBeacon
 
 ```javascript
 var uuid = 'e2c56db5dffb48d2b060d0f5a71096e0';
@@ -80,26 +110,27 @@ bleno.startAdvertisingIBeacon(uuid, major, minor, measuredPower[, callback(error
  __Notes:__:
   * OS X:
     * in iBeacon mode your peripheral is non-connectable!
-    * not supported by OS X 10.10 (Yosemite)
 
-#### Start advertising with EIR data (__Linux only__)
+##### Start advertising with EIR data (__Linux only__)
 
 ```javascript
 var scanData = new Buffer(...); // maximum 31 bytes
 var advertisementData = new Buffer(...); // maximum 31 bytes
 
-bleno.startAdvertisingWithEIRData(advertisementData, scanData[, callback(error)]);
+bleno.startAdvertisingWithEIRData(advertisementData[, scanData, callback(error)]);
 ```
 
   * For EIR format section [Bluetooth Core Specification](https://www.bluetooth.org/docman/handlers/downloaddoc.ashx?doc_id=229737) sections and 8 and 18 for more information the data format.
 
-#### Stop advertising
+##### Stop advertising
 
 ```javascript
 bleno.stopAdvertising([callback]);
 ```
 
 #### Set services
+
+Set the primary services available on the peripheral.
 
 ```javascript
 var services = [
@@ -118,7 +149,7 @@ bleno.disconnect(); // Linux only
 #### Update RSSI
 
 ```javascript
-bleno.updateRssi([callback(error, rssi)]); // Linux only
+bleno.updateRssi([callback(error, rssi)]); // not available in OS X 10.9
 ```
 
 ### Primary Service
@@ -141,17 +172,18 @@ var Characteristic = bleno.Characteristic;
 
 var characteristic = new Characteristic({
     uuid: 'fffffffffffffffffffffffffffffff1', // or 'fff1' for 16-bit
-    properties: [ ... ], // can be a combination of 'read', 'write', 'writeWithoutResponse', 'notify'
-    secure: [ ... ], // enable security for properties, can be a combination of 'read', 'write', 'writeWithoutResponse', 'notify'
+    properties: [ ... ], // can be a combination of 'read', 'write', 'writeWithoutResponse', 'notify', 'indicate'
+    secure: [ ... ], // enable security for properties, can be a combination of 'read', 'write', 'writeWithoutResponse', 'notify', 'indicate'
     value: null, // optional static value, must be of type Buffer
     descriptors: [
         // see Descriptor for data type
     ],
     onReadRequest: null, // optional read request handler, function(offset, callback) { ... }
     onWriteRequest: null, // optional write request handler, function(data, offset, withoutResponse, callback) { ...}
-    onSubscribe: null, // optional notify subscribe handler, function(maxValueSize, updateValueCallback) { ...}
-    onUnsubscribe: null, // optional notify unsubscribe handler, function() { ...}
+    onSubscribe: null, // optional notify/indicate subscribe handler, function(maxValueSize, updateValueCallback) { ...}
+    onUnsubscribe: null, // optional notify/indicate unsubscribe handler, function() { ...}
     onNotify: null // optional notify sent handler, function() { ...}
+    onIndicate: null // optional indicate confirmation received handler, function() { ...}
 });
 ```
 
@@ -254,13 +286,15 @@ bleno.on('advertisingStop', callback);
 #### Services set
 
 ```javascript
-bleno.on('servicesSet', callback);
+bleno.on('servicesSet', callback(error));
+
+bleno.on('servicesSetError', callback(error));
 ```
 
 #### Accept
 
 ```javascript
-bleno.on('accept', callback(clientAddress)); // Linux only
+bleno.on('accept', callback(clientAddress)); // not available on OS X 10.9
 ```
 
 #### Disconnect
@@ -272,20 +306,20 @@ bleno.on('disconnect', callback(clientAddress)); // Linux only
 #### RSSI Update
 
 ```javascript
-bleno.on('rssiUpdate', callback(rssi)); // Linux only
+bleno.on('rssiUpdate', callback(rssi)); // not available on OS X 10.9
 ```
 
 ### Running on Linux
 
 #### Running without root/sudo
 
-Run the following command in the directory you ran ```npm install``` from:
+Run the following command:
 
 ```sh
-find -path '*bleno*Release/hci-ble' -exec sudo setcap cap_net_raw+eip '{}' \;
+sudo setcap cap_net_raw+eip $(eval readlink -f `which node`)
 ```
 
-This grants bleno's ```hci-ble``` binary ```cap_net_raw``` privileges, so it can start/stop BLE advertising.
+This grants the ```node``` binary ```cap_net_raw``` privileges, so it can start/stop BLE advertising.
 
 __Note:__ The above command requires ```setcap``` to be installed, it can be installed using the following:
 
@@ -302,65 +336,33 @@ Example, specify ```hci1```:
 sudo BLENO_HCI_DEVICE_ID=1 node <your file>.js
 ```
 
-## Roadmap (TODO)
+#### Set custom device name
 
- * Mac OS X:
-   * ~~Adapter state (unknown | reseting | unsupported | unauthorized | off | on)~~
-   * ~~Advertisement~~
-      * ~~startAdvertising~~
-         * ~~name~~
-         * ~~service UUID's~~
-      * ~~startAdvertisingIBeacon~~
-      * ~~stopAdvertising~~
-   * ~~Services~~
-      * ~~UUID~~
-      * ~~Characteristics~~
-         * ~~UUID~~
-         * ~~properties~~
-           * ~~read (static, dynamic)~~
-           * ~~write~~
-           * ~~write without response~~
-           * ~~notify (subscribe, unsubscribe, value changed)~~
-           * broadcast (not possible)
-           * ~~indicate~~
-           * secure (not functioning, OS X issues)
-              * read
-              * write
-         * ~~Descriptors~~
-           * ~~UUID~~
-           * ~~read (static)~~
-           * write (not possible)
-      * Included Services (maybe ?)
-   * error handling
+By default bleno uses the hostname (```require('os').hostname()```) as the value for the device name (0x2a00) characterisic, to match the behaviour of OS X.
 
- * Linux
-   * ~~Adapter state (unsupported | unauthorized | off | on)~~
-   * ~~Advertisement~~
-      * ~~startAdvertising~~
-         * ~~name~~
-         * ~~service UUID's~~
-      * ~~startAdvertisingIBeacon~~
-      * ~~stopAdvertising~~
-   * ~~Services~~
-      * ~~UUID~~
-      * ~~Characteristics~~
-         * ~~UUID~~
-         * ~~properties~~
-           * ~~read (static, dynamic)~~
-           * ~~write~~
-           * ~~write without response~~
-           * ~~notify (subscribe, unsubscribe, value changed)~~
-           * broadcast (maybe ?)
-           * indicate (maybe ?)
-           * ~~secure~~
-               * ~~read~~
-               * ~~write~~
-         * ~~Descriptors~~
-           * ~~UUID~~
-           * ~~read (static)~~
-           * write (maybe ?)
-      * Included Services (maybe ?)
-   * error handling
+A custom device name can be specified by setting the ```BLENO_DEVICE_NAME``` environment variable:
+
+```sh
+sudo BLENO_DEVICE_NAME="custom device name" node <your file>.js
+```
+
+or
+
+```js
+process.env['BLENO_DEVICE_NAME'] = 'custom device name';
+```
+
+#### Set Advertising Interval
+
+bleno uses a 100 ms advertising interval by default.
+
+A custom advertising interval can be specified by setting the ```BLENO_ADVERTISING_INTERVAL``` enviroment variable with the desired value in milliseconds:
+
+```sh
+sudo BLENO_ADVERTISING_INTERVAL=500 node <your file>.js
+```
+
+Advertising intervals must be between 20 ms to 10 s (10,000 ms).
 
 ## Useful tools/links
 
